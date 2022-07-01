@@ -18,7 +18,6 @@ struct Config {
     context_lines: Option<usize>,
 }
 
-// TODO: highlight the selected offset/range
 struct HighlightFormatter<'f, 'a> {
     inner_std: &'f mut std::fmt::Formatter<'a>,
     highlight_range: Range<usize>,
