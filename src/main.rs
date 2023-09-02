@@ -1,4 +1,4 @@
-use std::{fmt::Display, ops::Range};
+use std::{fmt::Display, num::NonZeroUsize, ops::Range};
 
 use structopt::StructOpt;
 
@@ -11,7 +11,11 @@ struct Config {
     begin_offset: usize,
 
     /// The end offset
-    end_offset: Option<usize>,
+    end_offset: Option<NonZeroUsize>,
+
+    /// Whether the begin and end offsets act instead as line/column numbers
+    #[structopt(long = "reverse")]
+    reverse: bool,
 
     /// Context lines
     #[structopt(short = "C")]
@@ -217,10 +221,11 @@ struct SourceInfo<'src> {
 }
 
 impl<'src> SourceInfo<'src> {
-    pub fn from_range(input: &'src str, start: usize, end: Option<usize>) -> Self {
+    pub fn from_range(input: &'src str, start: usize, end: Option<NonZeroUsize>) -> Self {
         let line_start_info = LinePosInfo::from_offset(input, start);
-        let end =
-            end.unwrap_or_else(|| start.saturating_add(1).min(line_start_info.line_range.end));
+        let end = end
+            .map(NonZeroUsize::into)
+            .unwrap_or_else(|| start.saturating_add(1).min(line_start_info.line_range.end));
         let range = start..end;
         let line_end_info = LinePosInfo::from_offset(input, range.end);
 
@@ -356,13 +361,29 @@ fn main() {
         begin_offset,
         end_offset,
         context_lines,
+        reverse,
     } = Config::from_args();
 
     let contents = std::fs::read_to_string(file).unwrap();
 
-    println!(
-        "{}",
-        SourceInfo::from_range(&contents, begin_offset, end_offset)
-            .with_context_lines(context_lines.unwrap_or(0))
-    )
+    if reverse {
+        let mut offset = 0;
+
+        let line_no = begin_offset;
+        let col_no = end_offset.map(NonZeroUsize::into).unwrap_or(1);
+
+        for _ in 1..line_no {
+            offset += contents[offset..].find('\n').map(|x| x + 1).unwrap_or(0);
+        }
+
+        offset += col_no;
+
+        println!("{}", offset);
+    } else {
+        println!(
+            "{}",
+            SourceInfo::from_range(&contents, begin_offset, end_offset)
+                .with_context_lines(context_lines.unwrap_or(0))
+        )
+    }
 }
